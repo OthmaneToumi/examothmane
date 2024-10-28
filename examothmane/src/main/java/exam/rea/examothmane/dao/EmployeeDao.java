@@ -1,6 +1,8 @@
 package exam.rea.examothmane.dao;
 
 import exam.rea.examothmane.bean.Employee;
+import exam.rea.examothmane.exception.EmployeeNotFoundException;
+import exam.rea.examothmane.exception.EmailAlreadyUsedException; // Si vous avez besoin de cette exception
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
@@ -16,10 +18,15 @@ public class EmployeeDao {
     }
 
     // CREATE : Ajouter un employé
-    public void saveEmployee(Employee employee) {
+    public void saveEmployee(Employee employee) throws EmailAlreadyUsedException {
         String query = "INSERT INTO employees (nom, prenom, email) VALUES (?, ?, ?)";
         try (Connection connection = getConnection();
              PreparedStatement preparedStatement = connection.prepareStatement(query)) {
+            // Vérification de l'unicité de l'email
+            if (isEmailUsed(employee.getEmail())) {
+                throw new EmailAlreadyUsedException("Email déjà utilisé");
+            }
+
             preparedStatement.setString(1, employee.getName());
             preparedStatement.setString(2, employee.getPrenom());
             preparedStatement.setString(3, employee.getEmail());
@@ -27,6 +34,22 @@ public class EmployeeDao {
         } catch (SQLException e) {
             e.printStackTrace();
         }
+    }
+
+    // Vérifier si l'email est déjà utilisé
+    private boolean isEmailUsed(String email) {
+        String query = "SELECT COUNT(*) FROM employees WHERE email = ?";
+        try (Connection connection = getConnection();
+             PreparedStatement preparedStatement = connection.prepareStatement(query)) {
+            preparedStatement.setString(1, email);
+            ResultSet resultSet = preparedStatement.executeQuery();
+            if (resultSet.next()) {
+                return resultSet.getInt(1) > 0;
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return false;
     }
 
     // READ : Récupérer tous les employés
@@ -58,17 +81,19 @@ public class EmployeeDao {
             preparedStatement.setLong(1, id);
             ResultSet resultSet = preparedStatement.executeQuery();
             if (resultSet.next()) {
-                Employee employee = new Employee();
-                employee.setId(resultSet.getLong("id"));
-                employee.setName(resultSet.getString("nom"));
-                employee.setPrenom(resultSet.getString("prenom"));
-                employee.setEmail(resultSet.getString("email"));
-                return employee;
+                return new Employee(
+                    resultSet.getLong("id"),
+                    resultSet.getString("nom"),
+                    resultSet.getString("prenom"),
+                    resultSet.getString("email")
+                );
+            } else {
+                throw new EmployeeNotFoundException("Employé introuvable");
             }
         } catch (SQLException e) {
             e.printStackTrace();
+            throw new RuntimeException("Erreur lors de la récupération de l'employé", e); // Optionnel
         }
-        return null;
     }
 
     // UPDATE : Mettre à jour un employé par ID
@@ -80,7 +105,10 @@ public class EmployeeDao {
             preparedStatement.setString(2, employee.getPrenom());
             preparedStatement.setString(3, employee.getEmail());
             preparedStatement.setLong(4, employee.getId());
-            preparedStatement.executeUpdate();
+            int rowsAffected = preparedStatement.executeUpdate();
+            if (rowsAffected == 0) {
+                throw new EmployeeNotFoundException("Employé introuvable");
+            }
         } catch (SQLException e) {
             e.printStackTrace();
         }
@@ -92,7 +120,10 @@ public class EmployeeDao {
         try (Connection connection = getConnection();
              PreparedStatement preparedStatement = connection.prepareStatement(query)) {
             preparedStatement.setLong(1, id);
-            preparedStatement.executeUpdate();
+            int rowsAffected = preparedStatement.executeUpdate();
+            if (rowsAffected == 0) {
+                throw new EmployeeNotFoundException("Employé introuvable");
+            }
         } catch (SQLException e) {
             e.printStackTrace();
         }
